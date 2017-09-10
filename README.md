@@ -10,12 +10,6 @@ This is a work in progress but the basics have already been achieved.
 ## Left to do
 
 - Documentation
-- Make the following configuration
-  - Kubernetes API host/port
-  - Secret namespace and name
-  - SSL Certificates are currently always disabled. This should be an option.
-- Reuse the Kubernetes plugin's cloud configuration.
-- Need to add credentials in separate domain per cloud config.
 - Clean up
 - Write tests
 
