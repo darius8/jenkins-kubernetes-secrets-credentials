@@ -8,10 +8,12 @@ import hudson.Extension;
 import hudson.util.Secret;
 import org.jenkinsci.plugins.kubesecrets.ParsedSecret;
 
+import javax.annotation.Nonnull;
 import java.util.Map;
 
 @Extension
 public class SshUsernamePrivateKeySecretMapper extends AbstractKubernetesSecretMapper {
+    @Nonnull
     @Override
     public Credentials getCredential(ParsedSecret parsedSecret) {
         return new BasicSSHUserPrivateKey(
@@ -19,7 +21,7 @@ public class SshUsernamePrivateKeySecretMapper extends AbstractKubernetesSecretM
                 parsedSecret.getId(),
                 getSecretOrEmpty(parsedSecret, "username").getPlainText(),
                 new BasicSSHUserPrivateKey.DirectEntryPrivateKeySource(getSecretOrEmpty(parsedSecret, "private_key").getPlainText()),
-                getSecretOrEmpty(parsedSecret, "passphrase").getEncryptedValue(),
+                getSecretOrEmpty(parsedSecret, "passphrase").getPlainText(),
                 parsedSecret.getDescription()
         );
     }

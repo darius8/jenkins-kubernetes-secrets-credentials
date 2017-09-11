@@ -4,6 +4,7 @@ import com.cloudbees.plugins.credentials.Credentials;
 import com.cloudbees.plugins.credentials.CredentialsMatcher;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.CredentialsStore;
+import com.cloudbees.plugins.credentials.common.IdCredentials;
 import com.cloudbees.plugins.credentials.domains.Domain;
 import com.cloudbees.plugins.credentials.domains.DomainCredentials;
 import com.cloudbees.plugins.credentials.domains.DomainRequirement;
@@ -16,26 +17,16 @@ import jenkins.model.Jenkins;
 import org.acegisecurity.Authentication;
 import org.csanchez.jenkins.plugins.kubernetes.KubernetesCloud;
 import org.jenkinsci.plugins.kubesecrets.mapper.AbstractKubernetesSecretMapper;
-import sun.rmi.runtime.Log;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import javax.net.ssl.HostnameVerifier;
-import javax.net.ssl.SSLSession;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateEncodingException;
-import java.security.cert.X509Certificate;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 import static com.cloudbees.plugins.credentials.CredentialsMatchers.*;
 import static com.cloudbees.plugins.credentials.CredentialsScope.SYSTEM;
@@ -43,6 +34,8 @@ import static com.cloudbees.plugins.credentials.CredentialsScope.SYSTEM;
 @Extension
 public class KubeSecretsCredentialsProvider extends CredentialsProvider {
     private static final Logger LOGGER = Logger.getLogger(KubeSecretsCredentialsProvider.class.getName());
+
+    private final Map<Domain, List<Credentials>> domainCredentialsMap = new CopyOnWriteMap.Hash<>();
 
     private boolean skipGetCredentials;
 
@@ -76,13 +69,13 @@ public class KubeSecretsCredentialsProvider extends CredentialsProvider {
         getSecretsForAllClouds().stream().forEach(cloudSecrets -> {
             Domain domain = cloudSecrets.getCredentialsDomain();
             List<ParsedSecret> secrets = cloudSecrets.getSecret();
-            LOGGER.info("Adding " + secrets.size() + " secrets for cloud " + cloudSecrets.getCloud().getDisplayName());
+            LOGGER.fine("Adding " + secrets.size() + " secrets for cloud " + cloudSecrets.getCloud().getDisplayName());
             if (secrets.size() > 0) {
                 credentialsArray.addAll(DomainCredentials.getCredentials(getDomainListMap(domain, secrets), type, domainRequirements, matcher));
             }
         });
 
-        LOGGER.info("Found " + credentialsArray.size() + " credentials in clouds");
+        LOGGER.fine("Found " + credentialsArray.size() + " credentials in clouds");
         return credentialsArray;
     }
 
@@ -92,47 +85,65 @@ public class KubeSecretsCredentialsProvider extends CredentialsProvider {
         List<KubernetesCloud> clouds = Jenkins.getInstance().clouds.getAll(KubernetesCloud.class);
 
         CredentialsStore store = CredentialsProvider.lookupStores(Jenkins.getInstance()).iterator().next();
-        List<CloudSecrets> cloudSecretsStream = clouds.stream()
-                .map(cloud -> {
-                    String domainName = cloud.getDisplayName() + " Secrets";
 
-                    Domain domain = new Domain(domainName, "Created by kubernetes-secrets plugin", null);
-                    try {
-                        store.addDomain(domain);
-                    } catch (IOException e) {
-                        LOGGER.warning("Could not create domain for kubernetes cloud " + cloud.getDisplayName());
-                        e.printStackTrace();
-                    }
+        List<CloudSecrets> cloudSecrets = new LinkedList<>();
+        for (KubernetesCloud cloud : clouds) {
+            String domainName = cloud.getDisplayName() + " Secrets";
 
-                    List<ParsedSecret> secret = null;
-                    try {
-                        secret = getSecretsForCloud(cloud, secretConfig.getSecretName(), secretConfig.getConfigMapName());
-                    } catch (UnrecoverableKeyException | CertificateEncodingException | NoSuchAlgorithmException | KeyStoreException | IOException e) {
-                        LOGGER.warning("Error while trying to retrieve Kubernetes secrets for cloud " + cloud.getDisplayName());
-                        e.printStackTrace();
-                    }
+            Domain domain = new Domain(domainName, "Created by kubernetes-secrets plugin", null);
+            try {
+                store.addDomain(domain);
+            } catch (IOException e) {
+                LOGGER.warning("Could not create domain for kubernetes cloud " + cloud.getDisplayName());
+                e.printStackTrace();
+            }
 
-                    return new CloudSecrets(cloud, domain, secret);
-                })
-                .collect(Collectors.toList());
+            List<ParsedSecret> secret = null;
+            try {
+                secret = getSecretsForCloud(cloud, secretConfig.getSecretName(), secretConfig.getConfigMapName());
+            } catch (UnrecoverableKeyException | CertificateEncodingException | NoSuchAlgorithmException | KeyStoreException | IOException e) {
+                LOGGER.warning("Error while trying to retrieve Kubernetes secrets for cloud " + cloud.getDisplayName());
+                e.printStackTrace();
+            }
 
-        return cloudSecretsStream;
+            cloudSecrets.add(new CloudSecrets(cloud, domain, secret));
+        }
+
+        return cloudSecrets;
     }
 
     private Map<Domain, List<Credentials>> getDomainListMap(Domain domain, List<ParsedSecret> parsedSecrets) {
-        Map<Domain, List<Credentials>> domainCredentialsMap = new CopyOnWriteMap.Hash<>();
         if (!domainCredentialsMap.containsKey(domain)) {
             domainCredentialsMap.put(domain, new ArrayList<>());
         }
 
         List<Credentials> list = domainCredentialsMap.get(domain);
+        Map<String, Credentials> toBeAdded = new HashMap<>();
         parsedSecrets.stream().forEach(parsedSecret -> {
-            Credentials credential = AbstractKubernetesSecretMapper.createCredentialsFromSecret(parsedSecret);
-            if (credential != null && !list.contains(credential)) {
-                LOGGER.info("Providing Kubernetes secret: " + parsedSecret.getId());
-                list.add(credential);
+            IdCredentials credential = (IdCredentials) AbstractKubernetesSecretMapper.createCredentialsFromSecret(parsedSecret);
+            if (credential != null) {
+                if (!toBeAdded.containsKey(credential.getId())) {
+                    toBeAdded.put(credential.getId(), credential);
+                }
             }
         });
+
+        List<Credentials> toBeRemoved = new LinkedList<>();
+        for (Credentials credentials1 : list) {
+            IdCredentials idCredential = (IdCredentials) credentials1;
+            if (!toBeAdded.containsKey(idCredential.getId())) {
+                toBeRemoved.add(credentials1);
+                LOGGER.fine("Removed credential " + idCredential.getId());
+            } else if (list.contains(credentials1)) {
+                toBeRemoved.add(credentials1);
+                LOGGER.fine("Will update credential " + idCredential.getId());
+            } else {
+                LOGGER.fine("Will add credential " + idCredential.getId());
+            }
+        }
+
+        list.removeAll(toBeRemoved);
+        list.addAll(toBeAdded.values());
 
         return domainCredentialsMap;
     }
@@ -150,9 +161,21 @@ public class KubeSecretsCredentialsProvider extends CredentialsProvider {
                 .withName(secretsName)
                 .get();
 
-        List<ParsedSecret> parsedSecrets = ParsedSecretReader.getConfig(cloud, secret, filePathOrConfigMapName);
-        skipGetCredentials = false;
+        if (secret == null) {
+            LOGGER.warning("Could not find any secrets in \"" + cloud.getNamespace() + "." + secretsName + "\". Ensure the secrets exist.");
+            return null;
+        }
 
+        List<ParsedSecret> parsedSecrets = null;
+        try {
+            parsedSecrets = ParsedSecretReader.getConfig(cloud, secret, filePathOrConfigMapName);
+        } catch (UnrecoverableKeyException | CertificateEncodingException | NoSuchAlgorithmException | KeyStoreException | IOException e) {
+            LOGGER.warning("Could not get config for kubernetes secrets in \"" + filePathOrConfigMapName + "\". Ensure file or configmap exists");
+            e.printStackTrace();
+        } finally {
+            skipGetCredentials = false;
+        }
         return parsedSecrets;
+
     }
 }

@@ -7,8 +7,11 @@ import hudson.Extension;
 import org.jenkinsci.plugins.kubesecrets.ParsedSecret;
 import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl;
 
+import javax.annotation.Nonnull;
+
 @Extension
 public class SecretTextSecretMapper extends AbstractKubernetesSecretMapper {
+    @Nonnull
     @Override
     public Credentials getCredential(ParsedSecret parsedSecret) {
         return new StringCredentialsImpl(

@@ -8,10 +8,12 @@ import hudson.util.Secret;
 import org.csanchez.jenkins.plugins.kubernetes.OpenShiftTokenCredentialImpl;
 import org.jenkinsci.plugins.kubesecrets.ParsedSecret;
 
+import javax.annotation.Nonnull;
 import java.util.Map;
 
 @Extension
 public class OpenShiftOAuthTokenSecretMapper extends AbstractKubernetesSecretMapper {
+    @Nonnull
     @Override
     public Credentials getCredential(ParsedSecret parsedSecret) {
         Map<String, Secret> secrets = parsedSecret.getSecrets();

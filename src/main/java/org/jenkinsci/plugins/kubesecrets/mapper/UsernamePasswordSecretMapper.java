@@ -6,8 +6,11 @@ import com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl;
 import hudson.Extension;
 import org.jenkinsci.plugins.kubesecrets.ParsedSecret;
 
+import javax.annotation.Nonnull;
+
 @Extension
 public class UsernamePasswordSecretMapper extends AbstractKubernetesSecretMapper {
+    @Nonnull
     @Override
     public Credentials getCredential(ParsedSecret parsedSecret) {
         return new UsernamePasswordCredentialsImpl(
