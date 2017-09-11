@@ -1,17 +1,11 @@
 package org.jenkinsci.plugins.kubesecrets;
 
 import hudson.Extension;
-import hudson.XmlFile;
-import hudson.util.XStream2;
 import jenkins.model.GlobalConfiguration;
-import jenkins.model.Jenkins;
 import org.jenkinsci.Symbol;
 
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import java.io.File;
-import java.io.IOException;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 @Extension
@@ -19,8 +13,6 @@ import java.util.logging.Logger;
 public class KubernetesSecretConfig extends GlobalConfiguration {
     private String configMapName;
     private String secretName;
-
-    private static final Logger LOGGER = Logger.getLogger(KubernetesSecretConfig.class.getName());
 
     /**
      * Gets local configuration.
@@ -39,12 +31,12 @@ public class KubernetesSecretConfig extends GlobalConfiguration {
 
     @Nonnull
     public String getConfigMapName() {
-        return configMapName;
+        return configMapName == null ? "" : configMapName;
     }
 
     @Nonnull
     public String getSecretName() {
-        return secretName;
+        return secretName == null ? "" : secretName;
     }
 
     public void setConfigMapName(@CheckForNull String configMapName) {

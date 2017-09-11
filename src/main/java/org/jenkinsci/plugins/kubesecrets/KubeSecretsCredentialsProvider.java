@@ -16,6 +16,7 @@ import jenkins.model.Jenkins;
 import org.acegisecurity.Authentication;
 import org.csanchez.jenkins.plugins.kubernetes.KubernetesCloud;
 import org.jenkinsci.plugins.kubesecrets.mapper.AbstractKubernetesSecretMapper;
+import sun.rmi.runtime.Log;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -75,11 +76,13 @@ public class KubeSecretsCredentialsProvider extends CredentialsProvider {
         getSecretsForAllClouds().stream().forEach(cloudSecrets -> {
             Domain domain = cloudSecrets.getCredentialsDomain();
             List<ParsedSecret> secrets = cloudSecrets.getSecret();
+            LOGGER.info("Adding " + secrets.size() + " secrets for cloud " + cloudSecrets.getCloud().getDisplayName());
             if (secrets.size() > 0) {
                 credentialsArray.addAll(DomainCredentials.getCredentials(getDomainListMap(domain, secrets), type, domainRequirements, matcher));
             }
         });
 
+        LOGGER.info("Found " + credentialsArray.size() + " credentials in clouds");
         return credentialsArray;
     }
 
@@ -126,6 +129,7 @@ public class KubeSecretsCredentialsProvider extends CredentialsProvider {
         parsedSecrets.stream().forEach(parsedSecret -> {
             Credentials credential = AbstractKubernetesSecretMapper.createCredentialsFromSecret(parsedSecret);
             if (credential != null && !list.contains(credential)) {
+                LOGGER.info("Providing Kubernetes secret: " + parsedSecret.getId());
                 list.add(credential);
             }
         });
