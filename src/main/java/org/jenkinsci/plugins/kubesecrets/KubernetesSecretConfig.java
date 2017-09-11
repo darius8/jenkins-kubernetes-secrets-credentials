@@ -14,7 +14,6 @@ import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-// todo why is this not showing up inside global config?
 @Extension
 @Symbol("location")
 public class KubernetesSecretConfig extends GlobalConfiguration {
@@ -37,27 +36,6 @@ public class KubernetesSecretConfig extends GlobalConfiguration {
     public KubernetesSecretConfig() {
         load();
     }
-
-    @Override
-    public synchronized void load() {
-        // for backward compatibility, if we don't have our own data yet, then
-        // load from Mailer.
-        XmlFile file = getConfigFile();
-        if (!file.exists()) {
-            XStream2 xs = new XStream2();
-            file = new XmlFile(xs, new File(Jenkins.getInstance().getRootDir(), "hudson.tasks.Mailer.xml"));
-            if (file.exists()) {
-                try {
-                    file.unmarshal(this);
-                } catch (IOException e) {
-                    LOGGER.log(Level.WARNING, "Failed to load " + file, e);
-                }
-            }
-        } else {
-            super.load();
-        }
-    }
-
 
     @Nonnull
     public String getConfigMapName() {
