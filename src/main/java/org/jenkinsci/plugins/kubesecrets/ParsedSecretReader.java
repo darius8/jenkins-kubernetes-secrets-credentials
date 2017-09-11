@@ -13,14 +13,18 @@ import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateEncodingException;
 import java.util.Base64;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.apache.commons.io.Charsets.UTF_8;
 
 public class ParsedSecretReader {
+    private static final Logger LOGGER = Logger.getLogger(ParsedSecretReader.class.getName());
+
     public static List<ParsedSecret> getConfig(
             KubernetesCloud cloud,
             Secret secret,
@@ -48,20 +52,46 @@ public class ParsedSecretReader {
         );
     }
 
+    private static String readFromConfigMap(
+            KubernetesCloud cloud,
+            String configMapName,
+            String dataKey
+    ) throws UnrecoverableKeyException, CertificateEncodingException, NoSuchAlgorithmException, KeyStoreException, IOException {
+        ConfigMap configMap = cloud.connect()
+                .configMaps()
+                .inNamespace(cloud.getNamespace())
+                .withName(configMapName)
+                .get();
+
+        return configMap.getData().get(dataKey);
+    }
+
+    private static String readFromFile(File file) throws IOException {
+        return new String(Files.readAllBytes(file.toPath()));
+    }
+
     private static List<ParsedSecret> parseConfig(String configYaml, Secret kubeSecrets) {
         Yaml yaml = new Yaml();
 
         Map<String, List<Map<String, Object>>> config = (Map<String, List<Map<String, Object>>>) yaml.load(configYaml);
-        List<Map<String, Object>> mapList = config.get("secrets");
-        Stream<Map<String, Object>> stream = mapList.stream();
-        return stream
-                .map((object) -> new ParsedSecret(
-                        (String) object.get("id"),
-                        (String) object.get("kind"),
-                        (String) object.get("description"),
-                        mapSecretKeyRef(kubeSecrets.getData(), (Map<String, String>) object.get("secretKeyRef"))
-                ))
-                .collect(Collectors.toList());
+        List<Map<String, Object>> secretsObjects = config.get("secrets");
+
+        List<ParsedSecret> parsedSecrets = new LinkedList<>();
+        for (Map<String, Object> secretObject : secretsObjects) {
+            try {
+                parsedSecrets.add(new ParsedSecret(
+                        (String) secretObject.get("id"),
+                        (String) secretObject.get("kind"),
+                        (String) secretObject.get("description"),
+                        mapSecretKeyRef(kubeSecrets.getData(), (Map<String, String>) secretObject.get("secretKeyRef"))
+                ));
+            } catch (IllegalArgumentException e) {
+                LOGGER.warning("Could not convert Kubernetes secret to Jenkins credential");
+                e.printStackTrace();
+            }
+        }
+
+        return parsedSecrets;
     }
 
     private static Map<String, hudson.util.Secret> mapSecretKeyRef(
@@ -84,23 +114,5 @@ public class ParsedSecretReader {
                             return hudson.util.Secret.fromString(decodedString);
                         }
                 ));
-    }
-
-    private static String readFromConfigMap(
-            KubernetesCloud cloud,
-            String configMapName,
-            String dataKey
-    ) throws UnrecoverableKeyException, CertificateEncodingException, NoSuchAlgorithmException, KeyStoreException, IOException {
-        ConfigMap configMap = cloud.connect()
-                .configMaps()
-                .inNamespace(cloud.getNamespace())
-                .withName(configMapName)
-                .get();
-
-        return configMap.getData().get(dataKey);
-    }
-
-    private static String readFromFile(File file) throws IOException {
-        return new String(Files.readAllBytes(file.toPath()));
     }
 }

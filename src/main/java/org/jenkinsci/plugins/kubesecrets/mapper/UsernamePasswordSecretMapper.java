@@ -14,8 +14,8 @@ public class UsernamePasswordSecretMapper extends AbstractKubernetesSecretMapper
                 CredentialsScope.GLOBAL,
                 parsedSecret.getId(),
                 parsedSecret.getDescription(),
-                parsedSecret.getSecrets().get("username").getPlainText(),
-                parsedSecret.getSecrets().get("password").getPlainText()
+                getSecretOrEmpty(parsedSecret, "username").getPlainText(),
+                getSecretOrEmpty(parsedSecret, "password").getPlainText()
         );
     }
 }

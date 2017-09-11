@@ -15,7 +15,7 @@ public class SecretTextSecretMapper extends AbstractKubernetesSecretMapper {
                 CredentialsScope.GLOBAL,
                 parsedSecret.getId(),
                 parsedSecret.getDescription(),
-                parsedSecret.getSecrets().get("secret")
+                getSecretOrEmpty(parsedSecret, "secret")
         );
     }
 }

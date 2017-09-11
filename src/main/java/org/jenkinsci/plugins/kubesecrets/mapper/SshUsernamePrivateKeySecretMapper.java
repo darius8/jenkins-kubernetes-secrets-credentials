@@ -14,14 +14,12 @@ import java.util.Map;
 public class SshUsernamePrivateKeySecretMapper extends AbstractKubernetesSecretMapper {
     @Override
     public Credentials getCredential(ParsedSecret parsedSecret) {
-        Map<String, Secret> secrets = parsedSecret.getSecrets();
-
         return new BasicSSHUserPrivateKey(
                 CredentialsScope.GLOBAL,
                 parsedSecret.getId(),
-                secrets.get("username").getPlainText(),
-                new BasicSSHUserPrivateKey.DirectEntryPrivateKeySource(secrets.get("private_key").getPlainText()),
-                secrets.get("passphrase").getEncryptedValue(),
+                getSecretOrEmpty(parsedSecret, "username").getPlainText(),
+                new BasicSSHUserPrivateKey.DirectEntryPrivateKeySource(getSecretOrEmpty(parsedSecret, "private_key").getPlainText()),
+                getSecretOrEmpty(parsedSecret, "passphrase").getEncryptedValue(),
                 parsedSecret.getDescription()
         );
     }

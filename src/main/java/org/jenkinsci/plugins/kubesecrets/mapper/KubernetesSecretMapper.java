@@ -4,8 +4,12 @@ import com.cloudbees.plugins.credentials.Credentials;
 import hudson.ExtensionPoint;
 import org.jenkinsci.plugins.kubesecrets.ParsedSecret;
 
-public interface KubernetesSecretMapper extends ExtensionPoint {
-    public Credentials getCredential(ParsedSecret parsedSecret);
+import javax.annotation.Nonnull;
 
-    public String getName();
+public interface KubernetesSecretMapper extends ExtensionPoint {
+    @Nonnull
+    Credentials getCredential(ParsedSecret parsedSecret);
+
+    @Nonnull
+    String getName();
 }

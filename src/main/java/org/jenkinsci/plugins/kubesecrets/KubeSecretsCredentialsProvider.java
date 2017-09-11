@@ -43,25 +43,6 @@ import static com.cloudbees.plugins.credentials.CredentialsScope.SYSTEM;
 public class KubeSecretsCredentialsProvider extends CredentialsProvider {
     private static final Logger LOGGER = Logger.getLogger(KubeSecretsCredentialsProvider.class.getName());
 
-    // Create a trust manager that does not validate certificate chains
-    private TrustManager[] trustAllCerts = new TrustManager[]{new X509TrustManager() {
-        public X509Certificate[] getAcceptedIssuers() {
-            return null;
-        }
-
-        public void checkClientTrusted(X509Certificate[] certs, String authType) {
-        }
-
-        public void checkServerTrusted(X509Certificate[] certs, String authType) {
-        }
-    }
-    };
-    // Create all-trusting host name verifier
-    HostnameVerifier allHostsValid = new HostnameVerifier() {
-        public boolean verify(String hostname, SSLSession session) {
-            return true;
-        }
-    };
     private boolean skipGetCredentials;
 
     /**
