@@ -1,7 +1,6 @@
 package org.jenkinsci.plugins.kubesecrets;
 
 import com.cloudbees.plugins.credentials.*;
-import com.cloudbees.plugins.credentials.Messages;
 import com.cloudbees.plugins.credentials.common.IdCredentials;
 import com.cloudbees.plugins.credentials.domains.Domain;
 import com.cloudbees.plugins.credentials.domains.DomainCredentials;
@@ -9,19 +8,16 @@ import com.cloudbees.plugins.credentials.domains.DomainRequirement;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import edu.umd.cs.findbugs.annotations.Nullable;
-import hudson.BulkChange;
 import hudson.Extension;
 import hudson.ExtensionList;
 import hudson.model.*;
 import hudson.security.ACL;
-import hudson.security.Permission;
 import hudson.util.CopyOnWriteMap;
 import io.fabric8.kubernetes.api.model.Secret;
 import jenkins.model.Jenkins;
 import org.acegisecurity.Authentication;
 import org.csanchez.jenkins.plugins.kubernetes.KubernetesCloud;
 import org.jenkinsci.plugins.kubesecrets.mapper.AbstractKubernetesSecretMapper;
-import org.jenkinsci.plugins.pipeline.modeldefinition.shaded.org.joda.time.DateTime;
 import org.kohsuke.stapler.export.Exported;
 import org.kohsuke.stapler.export.ExportedBean;
 
@@ -39,13 +35,13 @@ import static com.cloudbees.plugins.credentials.CredentialsScope.SYSTEM;
 
 @Extension
 public class KubeSecretsCredentialsProvider extends AbstractDescribableImpl<KubeSecretsCredentialsProvider> {
+    private static final int SECRETS_RETRIEVAL_TIMEOUT_MILLIS = 300000;
+
     private static final Logger LOGGER = Logger.getLogger(KubeSecretsCredentialsProvider.class.getName());
 
     private final Map<Domain, List<Credentials>> domainCredentialsMap = new CopyOnWriteMap.Hash<>();
 
     protected static boolean skipGetCredentials;
-
-    private int secretsRetrievalTimeoutMillis = 300000;
 
     private long lastRetrievedSecrets = -1;
 
@@ -61,20 +57,6 @@ public class KubeSecretsCredentialsProvider extends AbstractDescribableImpl<Kube
         return domainCredentialsMap;
     }
 
-    private synchronized boolean addCredentials(@NonNull Domain domain, @NonNull Credentials credentials)
-            throws IOException {
-        Map<Domain, List<Credentials>> domainCredentialsMap = getDomainCredentialsMap();
-        if (domainCredentialsMap.containsKey(domain)) {
-            List<Credentials> list = domainCredentialsMap.get(domain);
-            if (list.contains(credentials)) {
-                return false;
-            }
-            list.add(credentials);
-            return true;
-        }
-        return false;
-    }
-
     @NonNull
     private synchronized List<Credentials> getCredentials(@NonNull Domain domain) {
         if (Jenkins.getInstance().hasPermission(CredentialsProvider.VIEW)) {
@@ -85,17 +67,6 @@ public class KubeSecretsCredentialsProvider extends AbstractDescribableImpl<Kube
             return Collections.unmodifiableList(new ArrayList<Credentials>(list));
         }
         return Collections.emptyList();
-    }
-
-    // todo do we need remove?
-    private synchronized boolean removeCredentials(@NonNull Domain domain, @NonNull Credentials credentials)
-            throws IOException {
-        throw new IOException("Cannot remove credentials for kubernetes secrets");
-    }
-
-    private synchronized boolean updateCredentials(@NonNull Domain domain, @NonNull Credentials current,
-                                                   @NonNull Credentials replacement) throws IOException {
-        throw new IOException("Cannot update credentials for kubernetes secrets");
     }
 
     /**
@@ -162,7 +133,8 @@ public class KubeSecretsCredentialsProvider extends AbstractDescribableImpl<Kube
     }
 
     private synchronized List<ParsedSecret> getSecretsForCloud(KubernetesCloud cloud, String secretsName, String filePathOrConfigMapName) {
-        // todo, need to find a better way to skip getCredentials(). Currently it's getting into an infinite call back loop.
+        // todo, need to find a better way to skip getCredentials(). Currently it's getting into an infinite call back loop
+        // because the Kubernetes plugin uses the credentials plugin.
         skipGetCredentials = true;
 
         List<ParsedSecret> parsedSecrets = null;
@@ -188,7 +160,7 @@ public class KubeSecretsCredentialsProvider extends AbstractDescribableImpl<Kube
     }
 
     private synchronized void populateCredentialsMap() {
-        if (lastRetrievedSecrets != -1 && (System.currentTimeMillis()-secretsRetrievalTimeoutMillis >= lastRetrievedSecrets)) {
+        if (lastRetrievedSecrets != -1 && (System.currentTimeMillis() - SECRETS_RETRIEVAL_TIMEOUT_MILLIS >= lastRetrievedSecrets)) {
             return;
         }
 
@@ -355,7 +327,7 @@ public class KubeSecretsCredentialsProvider extends AbstractDescribableImpl<Kube
      * Our {@link CredentialsStore}.
      */
     @ExportedBean
-    public static class StoreImpl extends CredentialsStore {
+    public static class StoreImpl extends ReadOnlyCredentialsStore {
 
         /**
          * Our store action.
@@ -378,23 +350,6 @@ public class KubeSecretsCredentialsProvider extends AbstractDescribableImpl<Kube
         /**
          * {@inheritDoc}
          */
-        @Override
-        public boolean hasPermission(@NonNull Authentication a, @NonNull Permission permission) {
-            // create/update/delete not implemented yet. perhaps better to leave this?
-            if(permission.equals(CredentialsProvider.CREATE) || permission.equals(CredentialsProvider.UPDATE) || permission.equals(CredentialsProvider.DELETE)) {
-                return false;
-            }
-
-            return getACL().hasPermission(a, permission);
-        }
-
-        public ACL getACL() {
-            return Jenkins.getInstance().getACL();
-        }
-
-        /**
-         * {@inheritDoc}
-         */
         @NonNull
         @Override
         @Exported
@@ -412,31 +367,6 @@ public class KubeSecretsCredentialsProvider extends AbstractDescribableImpl<Kube
         @Exported
         public List<Credentials> getCredentials(@NonNull Domain domain) {
             return KubeSecretsCredentialsProvider.getInstance().getCredentials(domain);
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public boolean addCredentials(@NonNull Domain domain, @NonNull Credentials credentials) throws IOException {
-            return KubeSecretsCredentialsProvider.getInstance().addCredentials(domain, credentials);
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public boolean removeCredentials(@NonNull Domain domain, @NonNull Credentials credentials) throws IOException {
-            return KubeSecretsCredentialsProvider.getInstance().removeCredentials(domain, credentials);
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public boolean updateCredentials(@NonNull Domain domain, @NonNull Credentials current,
-                                         @NonNull Credentials replacement) throws IOException {
-            return KubeSecretsCredentialsProvider.getInstance().updateCredentials(domain, current, replacement);
         }
 
         /**
